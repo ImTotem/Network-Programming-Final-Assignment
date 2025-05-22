@@ -1,0 +1,28 @@
+const opacity = {
+  opacity0: '0',
+  opacity5: '0.05',
+  opacity10: '0.1',
+  opacity15: '0.15',
+  opacity20: '0.2',
+  opacity30: '0.3',
+  opacity40: '0.4',
+  opacity50: '0.5',
+  opacity60: '0.6',
+  opacity70: '0.7',
+  opacity80: '0.8',
+  opacity90: '0.9',
+  hexOpacity0: '00',
+  hexOpacity5: '0D',
+  hexOpacity10: '1A',
+  hexOpacity15: '26',
+  hexOpacity20: '33',
+  hexOpacity30: '4D',
+  hexOpacity40: '66',
+  hexOpacity50: '7F',
+  hexOpacity60: '99',
+  hexOpacity70: 'B3',
+  hexOpacity80: 'CC',
+  hexOpacity90: 'E6',
+};
+
+export default opacity;

@@ -1,0 +1,75 @@
+{
+  "env": {
+    "browser": true,
+    "es2021": true,
+    "node": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:react/recommended",
+    "plugin:react-hooks/recommended",
+    "plugin:@typescript-eslint/recommended",
+    "airbnb",
+    "airbnb/hooks",
+    "airbnb-typescript",
+    "prettier",
+    "plugin:jsx-a11y/recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2021,
+    "sourceType": "module",
+    "project": "./tsconfig.json",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "plugins": ["react", "react-hooks", "jsx-a11y", "prettier", "@typescript-eslint"],
+  "rules": {
+    "prettier/prettier": "error",
+    "no-restricted-exports": "off",
+    "react/react-in-jsx-scope": "off",
+    "react/require-default-props": "off",
+    "react/jsx-props-no-spreading": "off",
+    "react/no-array-index-key": "off",
+    "react-hooks/exhaustive-deps": "off",
+    "import/extensions": "off",
+    "import/no-extraneous-dependencies": "off",
+    "import/prefer-default-export": "off",
+    "@typescript-eslint/no-use-before-define": "off",
+    "react/no-unstable-nested-components": "off",
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "import/order": [
+      "error",
+      {
+        "groups": [
+          "builtin",
+          "external",
+          "internal",
+          "parent",
+          "sibling",
+          "index",
+          "object",
+          "type"
+        ],
+        "pathGroups": [
+          {
+            "pattern": "react*",
+            "group": "builtin"
+          },
+          {
+            "pattern": "@/*",
+            "group": "external",
+            "position": "after"
+          }
+        ],
+        "newlines-between": "always",
+        "pathGroupsExcludedImportTypes": ["react*"],
+        "alphabetize": {
+          "order": "asc"
+        }
+      }
+    ]
+  },
+  "ignorePatterns": ["build", "public", ".yarn", "vscode", "*.config.ts", "*.config.cjs"]
+}
