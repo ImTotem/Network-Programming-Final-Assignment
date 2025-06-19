@@ -24,6 +24,14 @@ export default class Socket {
     });
   }
 
+  async connect(host: string, port: number) {
+    return await invoke('collab_connect', { host, port });
+  }
+
+  async disconnect() {
+    return await invoke('collab_disconnect');
+  }
+
   on(event: string, cb: EventCallback) {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());

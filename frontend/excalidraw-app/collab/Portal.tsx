@@ -40,6 +40,7 @@ class Portal {
     this.roomKey = key;
 
     // Initialize socket listeners
+    socket.connect("10.211.55.9", 3002);
     this.socket.on("init-room", () => {
       if (this.socket) {
         this.socket.emit("join-room", this.roomId);
