@@ -66,21 +66,41 @@ namespace Protocol {
     std::vector<char> serialize(const std::string& eventName, const std::vector<std::any>& args) {
         std::vector<char> buffer;
 
-        // 1. 이벤트 이름 직렬화
-        append_tlv(buffer, Tag::EVENT_NAME, create_value_buffer(eventName));
+        try {
+            // 1. 이벤트 이름 직렬화
+            append_tlv(buffer, Tag::EVENT_NAME, create_value_buffer(eventName));
 
-        // 2. 인자들 직렬화
-        for (const auto& arg : args) {
-            if (arg.type() == typeid(std::string)) {
-                append_tlv(buffer, Tag::UTF8_STRING, create_value_buffer(std::any_cast<std::string>(arg)));
-            } else if (arg.type() == typeid(std::vector<char>)) {
-                append_tlv(buffer, Tag::BINARY_DATA, create_value_buffer(std::any_cast<std::vector<char>>(arg)));
-            } else if (arg.type() == typeid(std::vector<std::string>)) {
-                append_tlv(buffer, Tag::STRING_VECTOR, create_value_buffer(std::any_cast<std::vector<std::string>>(arg)));
-            } else if (arg.type() == typeid(OnUserFollowedPayload)) {
-                nlohmann::json j = std::any_cast<OnUserFollowedPayload>(arg); // 객체를 JSON으로 변환
-                append_tlv(buffer, Tag::JSON_STRING, create_value_buffer(j.dump()));
+            // 2. 인자들 직렬화
+            for (const auto& arg : args) {
+                Log::debug("Protocol::serialize - arg type: {}", arg.type().name());
+                
+                if (arg.type() == typeid(std::string)) {
+                    append_tlv(buffer, Tag::UTF8_STRING, create_value_buffer(std::any_cast<std::string>(arg)));
+                } else if (arg.type() == typeid(std::vector<char>)) {
+                    append_tlv(buffer, Tag::BINARY_DATA, create_value_buffer(std::any_cast<std::vector<char>>(arg)));
+                } else if (arg.type() == typeid(std::vector<std::string>)) {
+                    append_tlv(buffer, Tag::STRING_VECTOR, create_value_buffer(std::any_cast<std::vector<std::string>>(arg)));
+                } else if (arg.type() == typeid(OnUserFollowedPayload)) {
+                    nlohmann::json j = std::any_cast<OnUserFollowedPayload>(arg);
+                    append_tlv(buffer, Tag::JSON_STRING, create_value_buffer(j.dump()));
+                } else {
+                    Log::warn("Protocol::serialize - Unsupported type: {}", arg.type().name());
+                    // 지원하지 않는 타입은 JSON으로 변환 시도
+                    try {
+                        nlohmann::json j = std::any_cast<nlohmann::json>(arg);
+                        append_tlv(buffer, Tag::JSON_STRING, create_value_buffer(j.dump()));
+                    } catch (const std::bad_any_cast& e) {
+                        Log::warn("Protocol::serialize - Failed to cast to JSON: {}", e.what());
+                        throw;
+                    }
+                }
             }
+        } catch (const std::bad_any_cast& e) {
+            Log::warn("Protocol::serialize - Bad any cast: {}", e.what());
+            throw;
+        } catch (const std::exception& e) {
+            Log::warn("Protocol::serialize - Unexpected error: {}", e.what());
+            throw;
         }
         return buffer;
     }

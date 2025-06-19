@@ -53,12 +53,15 @@ namespace WebSocketMiddleware {
         ctx.client->websocket_buffer.insert(ctx.client->websocket_buffer.end(), ctx.payload.begin(), ctx.payload.end());
         std::vector<char> application_payload;
         bool processed_frame = false;
+        bool is_final_frame = false;
 
         while (true) {
             auto& buffer = ctx.client->websocket_buffer;
             if (buffer.size() < 2) break;
 
-            uint8_t opcode = buffer[0] & 0x0F;
+            uint8_t first_byte = buffer[0];
+            bool fin = (first_byte & 0x80) != 0;
+            uint8_t opcode = first_byte & 0x0F;
             bool is_masked = (buffer[1] & 0x80) != 0;
             uint64_t payload_len = buffer[1] & 0x7F;
             size_t offset = 2;
@@ -94,6 +97,7 @@ namespace WebSocketMiddleware {
             if (opcode == 0x2) { // Binary Frame
                 application_payload.insert(application_payload.end(), unmasked_payload.begin(), unmasked_payload.end());
                 processed_frame = true;
+                is_final_frame = fin;
             } else if (opcode == 0x8) { // Close
                 ctx.server.close(ctx.client->fd);
                 return;
@@ -105,10 +109,12 @@ namespace WebSocketMiddleware {
             buffer.erase(buffer.begin(), buffer.begin() + frame_size);
         }
 
-        if (processed_frame) {
+        if (processed_frame && is_final_frame) {
             ctx.payload = application_payload;
+            Log::debug("WebSocket::handleFrames - Complete message received, payload size: {}", application_payload.size());
         } else {
             ctx.stopProcessing = true;
+            Log::debug("WebSocket::handleFrames - Incomplete message, waiting for more frames");
         }
     }
 

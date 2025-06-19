@@ -72,12 +72,23 @@ RoomServer::RoomServer(const unsigned short port) : Server(port) {
 
     // 2. TLV 프로토콜 역직렬화 미들웨어 (웹소켓 handshake/프레임이 아닌 경우만)
     use([this](Context& ctx) {
-        if (ctx.payload.size() < 5 || !this->deserialize_protocol_) {
-            Log::warn("Protocol deserializer is not set or payload too short!");
+        if (!this->deserialize_protocol_) {
+            Log::warn("Protocol deserializer is not set!");
             ctx.stopProcessing = true;
             return;
         }
-        this->deserialize_protocol_(ctx.payload, ctx.eventName, ctx.args);
+        if (ctx.payload.size() < 5) {
+            Log::warn("Payload too short for TLV protocol (size: {})", ctx.payload.size());
+            ctx.stopProcessing = true;
+            return;
+        }
+        try {
+            this->deserialize_protocol_(ctx.payload, ctx.eventName, ctx.args);
+            Log::debug("Successfully deserialized payload of size {}", ctx.payload.size());
+        } catch (const std::exception& e) {
+            Log::warn("Failed to deserialize payload: {}", e.what());
+            ctx.stopProcessing = true;
+        }
     });
 }
 
