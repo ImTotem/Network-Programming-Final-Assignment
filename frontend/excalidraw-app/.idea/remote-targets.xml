@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="RemoteTargetsManager">
+    <targets>
+      <target name="sungbin@10.211.55.9:22" type="ssh/sftp" uuid="eef3175e-2ffe-4b0d-8526-876cb94ee1a9">
+        <config>
+          <option name="projectRootOnTarget" value="/home/sungbin/excalidraw-app" />
+          <option name="serverName" value="sungbin@10.211.55.9:22 password" />
+          <option name="useRsync" value="true" />
+        </config>
+        <ContributedStateBase type="RsLanguageRuntime">
+          <config>
+            <option name="cargoPath" value="/home/sungbin/.cargo/bin/cargo" />
+            <option name="cargoVersion" value="1.87.0 (99624be96 2025-05-06)" />
+            <option name="rustcPath" value="/home/sungbin/.cargo/bin/rustc" />
+            <option name="rustcVersion" value="1.87.0 (17067e9ac 2025-05-09)" />
+          </config>
+        </ContributedStateBase>
+      </target>
+    </targets>
+  </component>
+</project>
