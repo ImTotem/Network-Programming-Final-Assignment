@@ -32,19 +32,12 @@ set(COLLAB_CXX_SOURCES
         src/room/RoomServer.cpp
         src/room/RoomServer.h
         src/room/client/IdGenerator.h
-        src/middleware/Middleware.h
         src/room/client/Client.cpp
         src/room/client/Client.h
-        src/middleware/protocol/Protocol.h
-        src/middleware/protocol/Protocol.cpp
-        src/middleware/websocket/WebSocket.h
-        src/middleware/websocket/WebSocket.cpp
-        src/utils/Endian.h
-        src/utils/sha1.h
         src/utils/base64.h
-        src/utils/sha1.cpp
         src/utils/base64.cpp
-        src/middleware/payload/Payload.h
+        src/app/Payload.h
+        src/server/Packet.h
 )
 
 if(WIN32)

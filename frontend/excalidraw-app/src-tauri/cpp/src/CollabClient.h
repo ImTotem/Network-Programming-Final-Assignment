@@ -24,12 +24,15 @@ public:
     void disconnect();
 
     // 서버로 이벤트 전송
+    // eventName은 항상 "payload"로 고정, args는 반드시 {"event":..., "data":...} JSON string 하나만 전달
     bool emit(const std::string& eventName, const std::vector<std::any>& args);
 
     // C++ 코드 내에서 직접 콜백 등록 (기존)
+    // eventName은 항상 "payload"로 고정, 콜백에서 args[0]만 사용해야 함
     void on(const std::string& eventName, std::function<void(const std::vector<std::any>&)> callback);
 
     // Rust FFI에서 콜백 등록 (추가)
+    // 콜백에서 args[0]만 사용해야 함
     void set_event_callback(collab_event_callback_t cb, void* user_data);
 
 private:

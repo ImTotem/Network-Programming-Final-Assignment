@@ -24,6 +24,7 @@ import { activeRoomLinkAtom } from "../collab/Collab";
 import "./ShareDialog.scss";
 
 import type { CollabAPI } from "../collab/Collab";
+import {getCollaborationLinkData} from "../data";
 
 type OnExportToBackend = () => void;
 type ShareDialogType = "share" | "collaborationOnly";
@@ -181,6 +182,8 @@ const ShareDialogPicker = (props: ShareDialogProps) => {
 
   const { collabAPI } = props;
 
+  const [joinLink, setJoinLink] = useState("");
+
   const startCollabJSX = collabAPI ? (
     <>
       <div className="ShareDialog__picker__header">
@@ -190,6 +193,35 @@ const ShareDialogPicker = (props: ShareDialogProps) => {
       <div className="ShareDialog__picker__description">
         <div style={{ marginBottom: "1em" }}>{t("roomDialog.desc_intro")}</div>
         {t("roomDialog.desc_privacy")}
+      </div>
+
+      {props.type === "share" && (
+        <div className="ShareDialog__separator">
+          <span>{t("shareDialog.or")}</span>
+        </div>
+      )}
+
+      <div
+        className="ShareDialog__join"
+        style={{
+          display: "flex",
+          gap: "0.5rem",
+          alignItems: "flex-end",
+          marginTop: "1rem",
+        }}
+      >
+        <TextField
+          placeholder="Link"
+          value={joinLink}
+          onChange={setJoinLink}
+        />
+        <FilledButton
+          size="large"
+          label="Join"
+          onClick={() => {
+            collabAPI.startCollaboration(getCollaborationLinkData(joinLink));
+          }}
+        />
       </div>
 
       <div className="ShareDialog__picker__button">

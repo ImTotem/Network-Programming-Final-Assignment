@@ -16,6 +16,8 @@ set(COLLAB_C_SOURCES
 
 )
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+
 set(COLLAB_CXX_SOURCES
         src/CollabClient.h
         src/CollabClient.cpp
@@ -36,7 +38,7 @@ set(COLLAB_CXX_SOURCES
 set_source_files_properties(${COLLAB_C_SOURCES} PROPERTIES LANGUAGE C)
 
 add_library(
-        collab_lib SHARED
+        collab_lib STATIC
         ${COLLAB_C_SOURCES}
         ${COLLAB_CXX_SOURCES}
 )

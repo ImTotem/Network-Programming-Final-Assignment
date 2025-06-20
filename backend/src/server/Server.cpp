@@ -9,7 +9,6 @@
 
 #include "log/Log.h"
 #include "socket/IOMultiplexer/IOMultiplexingException.h"
-#include "utils/Endian.h"
 
 [[noreturn]] void Server::start() {
     socket->open();
@@ -25,7 +24,7 @@
             } else if (current_fd == STDIN_FILENO) {
                 handleStdinInput();
             } else {
-                read(current_fd);
+                recv(current_fd);
             }
         }
     }
@@ -43,15 +42,13 @@ void Server::stop() {
 }
 
 void Server::handleNewConnection() {
-    const int client_fd = socket->accept();
+    const sockfd client_fd = socket->accept();
     if (client_fd <= INVALID_FD) {
-        // Handle accept errors, especially for non-blocking accept (though this is blocking)
         Log::warn("Failed to accept new connection");
         return;
     }
-
     io->control(Operation::ADD, client_fd);
-    emit("_connection", client_fd);
+    emit("_connection", Packet("connection", "", client_fd));
     Log::info("New connection established, fd: {}", client_fd);
 }
 
@@ -62,46 +59,26 @@ void Server::handleStdinInput() {
     }
 }
 
-void Server::close(int fd) {
-    if (client_buffers.contains(fd)) {
-        emit("_disconnect", fd);
-        io->control(Operation::DEL, fd);
-        socket->close(fd, {Method::READ, Method::WRITE});
-        client_buffers.erase(fd);
-        Log::info("Connection closed for fd: {}", fd);
-    }
+void Server::close(const sockfd fd) {
+    io->control(Operation::DEL, fd);
+    socket->close(fd, {Method::READ, Method::WRITE});
+    Log::info("Connection closed for fd: {}", fd);
+    emit("_disconnect", Packet("disconnect", "", fd));
 }
 
-void Server::read(int clientFd) {
-    ssize_t length = socket->recv(clientFd, recv_buffer.data(), recv_buffer.size());
+void Server::send(const Packet& packet) {
+    const std::string raw = serializePacket(packet.event, packet.data);
+    socket->send(packet.fd, raw.data(), raw.size());
+}
 
-    if (length > 0) {
-        auto& buffer = client_buffers[clientFd];
-        buffer.insert(buffer.end(), recv_buffer.begin(), recv_buffer.begin() + length);
-
-        // 길이 헤더 기반의 TCP 프레이밍은 이제 WebSocket 미들웨어가 아닌,
-        // 일반 TCP 통신에서만 사용되어야 함. 이 부분은 미들웨어 구조에서 다시 결정.
-        // 지금은 받은 데이터를 그대로 "message" 이벤트로 올립니다.
-        if (!buffer.empty()) {
-            emit("_message", clientFd, std::vector(buffer.begin(), buffer.end()));
-        }
-        buffer.clear(); // 처리했으므로 버퍼 비움
+void Server::recv(const sockfd fd) {
+    if (const ssize_t length = socket->recv(fd, recv_buffer.data(), recv_buffer.size()); length > 0) {
+        const std::string payload(recv_buffer.begin(), recv_buffer.begin() + length);
+        auto [event, data] = parsePacket(payload);
+        const Packet packet(event, data, fd);
+        Log::debug("{} {} {}", packet.event, packet.data, packet.fd);
+        emit("_message", packet);
     } else {
-        close(clientFd);
+        close(fd);
     }
 }
-
-// 이 함수는 [길이][데이터] 프레임을 만들어 보냅니다. (일반 TCP용)
-void Server::write(int fd, const std::vector<char>& data) {
-    uint32_t len_net = Endian::hostToNetwork32(data.size());
-    socket->send(fd, &len_net, sizeof(len_net));
-    if (!data.empty()) {
-        socket->send(fd, data.data(), data.size());
-    }
-}
-
-// 이 함수는 데이터를 있는 그대로 보냅니다. (WebSocket 핸드셰이크용)
-void Server::write_raw(int fd, const std::string& data) {
-    socket->send(fd, data.data(), data.size());
-}
-

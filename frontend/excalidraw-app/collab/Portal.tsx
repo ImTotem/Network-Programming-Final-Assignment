@@ -95,9 +95,11 @@ class Portal {
 
       this.socket?.emit(
         volatile ? WS_EVENTS.SERVER_VOLATILE : WS_EVENTS.SERVER,
-        roomId ?? this.roomId,
-        encryptedBuffer,
-        iv,
+        {
+          roomId: roomId ?? this.roomId,
+          encryptedBuffer,
+          iv,
+        },
       );
     }
   }

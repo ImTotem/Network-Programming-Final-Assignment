@@ -25,12 +25,16 @@ void collabclient_disconnect(void* client) {
 }
 
 bool collabclient_emit(void* client, const char* event, const char** args, int argc) {
-    if (!client || !event) return false;
+    if (!client) return false;
     std::vector<std::any> argvec;
-    for (int i = 0; i < argc; ++i) {
-        argvec.emplace_back(std::string(args[i]));
+    if (argc > 0 && args && args[0]) {
+        argvec.emplace_back(std::string(args[0]));
+    } else {
+        // 잘못된 사용: 빈 payload
+        argvec.emplace_back(std::string("{\"event\":\"unknown\",\"data\":\"\"}"));
     }
-    return static_cast<CollabClient*>(client)->emit(std::string(event), argvec);
+    // 항상 "payload"로 고정
+    return static_cast<CollabClient*>(client)->emit("payload", argvec);
 }
 
 void collabclient_set_event_callback(void* client, collab_event_callback_t cb, void* user_data) {

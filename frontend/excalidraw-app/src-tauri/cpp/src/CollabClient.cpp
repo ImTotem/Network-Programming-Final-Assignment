@@ -56,7 +56,16 @@ void CollabClient::disconnect() {
 
 bool CollabClient::emit(const std::string& eventName, const std::vector<std::any>& args) {
     if (sockfd < 0) return false;
-    std::vector<char> payload = Protocol::serialize(eventName, args);
+    // 항상 eventName은 "payload"로, args는 JSON string 하나만
+    std::string fixedEvent = "payload";
+    std::vector<std::any> fixedArgs;
+    if (!args.empty() && args[0].type() == typeid(std::string)) {
+        fixedArgs.push_back(std::any_cast<std::string>(args[0]));
+    } else {
+        // 잘못된 사용: 빈 payload
+        fixedArgs.push_back(std::string("{\"event\":\"unknown\",\"data\":\"\"}"));
+    }
+    std::vector<char> payload = Protocol::serialize(fixedEvent, fixedArgs);
 
     // [길이(4바이트)][payload]
     uint32_t len = htonl(payload.size());
@@ -105,7 +114,16 @@ void CollabClient::handleMessage(const std::vector<char>& data) {
     std::vector<std::any> args;
     Protocol::deserialize(data, eventName, args);
 
-    // 1. C++ 핸들러 우선 호출
+    // 항상 eventName은 "payload", args[0]은 JSON string임을 가정
+    if (event_callback && !args.empty() && args[0].type() == typeid(std::string)) {
+        std::string jsonStr = std::any_cast<std::string>(args[0]);
+        // nlohmann::json j = nlohmann::json::parse(jsonStr);
+        // std::string event = j["event"];
+        // std::string data = j["data"];
+        // std::string decoded = base64::from_base64(data);
+        // ...
+    }
+    // 기존 C++ 핸들러도 동일하게 동작
     {
         std::lock_guard<std::mutex> lock(handlerMutex);
         auto it = handlers.find(eventName);
@@ -113,32 +131,16 @@ void CollabClient::handleMessage(const std::vector<char>& data) {
             it->second(args);
         }
     }
-
-    // 2. Rust FFI 콜백이 등록되어 있으면 호출
+    // Rust FFI 콜백도 동일하게 전달
     if (event_callback) {
-        // std::any -> std::string 변환 (모든 인자를 string으로 전달)
         std::vector<std::string> str_args;
         for (const auto& arg : args) {
             if (arg.type() == typeid(std::string)) {
                 str_args.push_back(std::any_cast<std::string>(arg));
-            } else if (arg.type() == typeid(std::vector<char>)) {
-                // 바이너리 데이터는 base64 등으로 변환 필요할 수 있음. 여기선 string으로 변환 시도
-                const auto& bin = std::any_cast<std::vector<char>>(arg);
-                str_args.push_back(std::string(bin.begin(), bin.end()));
-            } else if (arg.type() == typeid(std::vector<std::string>)) {
-                // 벡터는 콤마로 join (실제 사용에 맞게 수정 필요)
-                const auto& vec = std::any_cast<std::vector<std::string>>(arg);
-                std::string joined;
-                for (size_t i = 0; i < vec.size(); ++i) {
-                    joined += vec[i];
-                    if (i + 1 < vec.size()) joined += ",";
-                }
-                str_args.push_back(joined);
             } else {
-                str_args.push_back("[unsupported type]");
+                str_args.push_back("");
             }
         }
-        // C 스타일 배열로 변환
         std::vector<const char*> c_args;
         for (const auto& s : str_args) c_args.push_back(s.c_str());
         event_callback(eventName.c_str(), c_args.data(), c_args.size(), event_callback_user_data);

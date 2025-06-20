@@ -3,14 +3,44 @@
 //
 
 #include "CollabServer.h"
-#include <vector>
 #include <string>
 #include "env/dotenv.h"
 #include "log/Log.h"
-#include "middleware/payload/Payload.h"
-#include "middleware/protocol/Protocol.h"
 #include "room/RoomServer.h"
 #include "room/client/Client.h"
+#include <sstream>
+#include <vector>
+#include <nlohmann/json.hpp>
+
+// --- 유틸 함수 구현 ---
+static std::vector<std::string> split(const std::string& s, char delimiter) {
+    std::vector<std::string> tokens;
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, delimiter)) {
+        tokens.push_back(item);
+    }
+    return tokens;
+}
+
+static std::string join(const std::vector<std::string>& v, const std::string& delim) {
+    std::ostringstream oss;
+    for (size_t i = 0; i < v.size(); ++i) {
+        if (i != 0) oss << delim;
+        oss << v[i];
+    }
+    return oss.str();
+}
+
+static std::string extractSocketId(const std::string& json) {
+    // 매우 단순한 string 파싱: "socketId":"..." 패턴에서 ...만 추출
+    auto pos = json.find("\"socketId\":\"");
+    if (pos == std::string::npos) return "";
+    pos += 13; // "socketId":" 길이
+    auto end = json.find('"', pos);
+    if (end == std::string::npos) return "";
+    return json.substr(pos, end - pos);
+}
 
 CollabServer::CollabServer() {
     // 1. 환경변수 로드
@@ -23,7 +53,6 @@ CollabServer::CollabServer() {
     if (getenv("PORT")) {
         port = static_cast<unsigned short>(strtoul(getenv("PORT"), nullptr, 0));
     } else {
-        // port = getenv("DEBUG") ? 3002 : 80;
         port = 3002;
     }
 
@@ -32,9 +61,6 @@ CollabServer::CollabServer() {
 
     // 4. 이벤트 핸들러 설정
     setupEventHandlers();
-
-    // 5. 프로토콜 정의
-    io->setProtocol(Protocol::serialize, Protocol::deserialize);
 }
 
 CollabServer::~CollabServer() = default;
@@ -45,114 +71,83 @@ void CollabServer::run() {
 }
 
 void CollabServer::setupEventHandlers() {
-    // server.on("connection", (client) => { ... });
-    io->on("connection", [this](const std::vector<std::any>& args) {
-        auto client = std::any_cast<std::shared_ptr<Client>>(args[0]);
+    io->on("connection", [this](const Packet& packet) {
+        auto client = io->getClient(packet.fd);
+        if (!client) return;
         Log::info("Connection established! Client ID: {}", client->id);
+        io->emitToRoom(client->id, Packet("init-room", "", client->fd));
 
-        // server.to(`${client.id}`).emit("init-room");
-        this->io->to(client->id).emit("init-room");
-
-        // client.on("join-room", async (roomID) => { ... });
-        client->on("join-room", [this, client](const std::vector<std::any>& room_args) {
-            // 프로토콜 미들웨어에서 room_args[0]에 roomID를 string으로 파싱했다고 가정
-            const auto roomID = std::any_cast<std::string>(room_args[0]);
+        client->on("join-room", [this, client](const Packet& packet) {
+            const std::string& roomID = packet.data;
             Log::debug("{} has joined {}", client->id, roomID);
-
             client->join(roomID);
-
-            const auto sockets = this->io->socketsIn(roomID);
+            const auto sockets = io->socketsIn(roomID);
             if (sockets.size() <= 1) {
-                this->io->to(client->id).emit("first-in-room");
+                io->emitToRoom(client->id, Packet("first-in-room", "", client->fd));
             } else {
                 Log::debug("{} emitting new-user to room {}", client->id, roomID);
-                client->broadcast().to(roomID).emit("new-user", client->id);
+                io->broadcastToRoom(roomID, Packet("new-user", client->id, client->fd));
             }
-
             std::vector<std::string> socket_ids;
             socket_ids.reserve(sockets.size());
-            for (const auto& s : sockets) { socket_ids.push_back(s->id); }
-            this->io->in(roomID).emit("room-user-change", socket_ids);
+            for (const auto& s : sockets) socket_ids.push_back(s->id);
+            io->emitToRoom(roomID, Packet("room-user-change", join(socket_ids, ","), client->fd));
         });
 
-        // client.on("server-broadcast", (roomID, encryptedData, iv) => { ... });
-        client->on("server-broadcast", [client](const std::vector<std::any>& broadcast_args) {
-            // 프로토콜 미들웨어에서 args를 {roomID, encryptedData, iv}로 파싱했다고 가정
-            const auto& roomID = std::any_cast<const std::string&>(broadcast_args[0]);
-            const auto& encryptedData = std::any_cast<const std::vector<char>&>(broadcast_args[1]);
-            const auto& iv = std::any_cast<const std::vector<char>&>(broadcast_args[2]);
-
+        client->on("server-broadcast", [this, client](const Packet& packet) {
+            auto parts = split(packet.data, '|');
+            if (parts.size() != 3) return;
+            const auto& roomID = parts[0];
+            const auto& encryptedData = parts[1];
+            const auto& iv = parts[2];
             Log::debug("{} sends update to {}", client->id, roomID);
-            client->broadcast().to(roomID).emit("client-broadcast", encryptedData, iv);
+            io->broadcastToRoom(roomID, Packet("client-broadcast", encryptedData + "|" + iv, client->fd));
         });
 
-        // client.on("server-volatile-broadcast", ...);
-        // TCP는 신뢰성 있는 프로토콜이므로 volatile 개념이 없음. 일반 broadcast와 동일하게 처리.
-        client->on("server-volatile-broadcast", [client](const std::vector<std::any>& broadcast_args) {
-            const auto& roomID = std::any_cast<const std::string&>(broadcast_args[0]);
-            const auto& encryptedData = std::any_cast<const std::vector<char>&>(broadcast_args[1]);
-            const auto& iv = std::any_cast<const std::vector<char>&>(broadcast_args[2]);
-
+        client->on("server-volatile-broadcast", [this, client](const Packet& packet) {
+            auto parts = split(packet.data, '|');
+            if (parts.size() != 3) return;
+            const auto& roomID = parts[0];
+            const auto& encryptedData = parts[1];
+            const auto& iv = parts[2];
             Log::debug("{} sends volatile update to {}", client->id, roomID);
-            client->broadcast().to(roomID).emit("client-broadcast", encryptedData, iv);
+            io->broadcastToRoom(roomID, Packet("client-broadcast", encryptedData + "|" + iv, client->fd));
         });
 
-        // client.on("user-follow", async (payload: OnUserFollowedPayload) => { ... });
-        client->on("user-follow", [this, client](const std::vector<std::any>& follow_args) {
-            // 프로토콜 미들웨어에서 args[0]을 OnUserFollowedPayload 구조체로 파싱했다고 가정
-            const auto& json_string = std::any_cast<const std::string&>(follow_args[0]);
-            const auto payload = nlohmann::json::parse(json_string).get<OnUserFollowedPayload>();
-            const std::string roomID = "follow@" + payload.userToFollow.socketId;
-
-            switch (payload.action) {
-                case FollowAction::FOLLOW: {
-                    client->join(roomID);
-                    const auto sockets = this->io->socketsIn(roomID);
-                    std::vector<std::string> followedBy_ids;
-                    for (const auto& s : sockets) { followedBy_ids.push_back(s->id); }
-                    this->io->to(payload.userToFollow.socketId).emit("user-follow-room-change", followedBy_ids);
-                    break;
-                }
-                case FollowAction::UNFOLLOW: {
-                    client->leave(roomID);
-                    const auto sockets = this->io->socketsIn(roomID);
-                    std::vector<std::string> followedBy_ids;
-                    for (const auto& s : sockets) { followedBy_ids.push_back(s->id); }
-                    this->io->to(payload.userToFollow.socketId).emit("user-follow-room-change", followedBy_ids);
-                    break;
-                }
+        client->on("user-follow", [this, client](const Packet& packet) {
+            const std::string& json_string = packet.data;
+            std::string roomID = "follow@" + extractSocketId(json_string);
+            if (json_string.find("FOLLOW") != std::string::npos) {
+                client->join(roomID);
+            } else {
+                client->leave(roomID);
             }
+            const auto sockets = io->socketsIn(roomID);
+            std::vector<std::string> followedBy_ids;
+            for (const auto& s : sockets) followedBy_ids.push_back(s->id);
+            io->emitToRoom(extractSocketId(json_string), Packet("user-follow-room-change", join(followedBy_ids, ","), client->fd));
         });
 
-        // client.on("disconnecting", async () => { ... });
-        client->on("disconnecting", [this, client](const std::vector<std::any>& /*args*/) {
+        client->on("disconnecting", [this, client](const Packet&) {
             Log::debug("{} has disconnected", client->id);
-            // client->rooms는 현재 클라이언트가 속한 모든 방의 목록
             for (const auto& roomID : client->rooms) {
-                const auto otherClients = this->io->socketsIn(roomID);
-
-                const bool isFollowRoom = roomID.starts_with("follow@");
-
+                const auto otherClients = io->socketsIn(roomID);
+                const bool isFollowRoom = roomID.rfind("follow@", 0) == 0;
                 if (!isFollowRoom && otherClients.size() > 1) {
                     std::vector<std::string> socket_ids;
                     for (const auto& c : otherClients) {
-                        if (c->id != client->id) { // 나가는 자신을 제외
-                            socket_ids.push_back(c->id);
-                        }
+                        if (c->id != client->id) socket_ids.push_back(c->id);
                     }
                     if (!socket_ids.empty()) {
-                        client->broadcast().to(roomID).emit("room-user-change", socket_ids);
+                        io->broadcastToRoom(roomID, Packet("room-user-change", join(socket_ids, ","), client->fd));
                     }
                 }
-
                 if (isFollowRoom && otherClients.size() == 1 && otherClients[0]->id == client->id) {
-                    // 이제 이 방에는 아무도 없게 됨 (나가는 사람 제외 시 0명)
                     const auto socketId = roomID.substr(std::string("follow@").length());
-                    this->io->to(socketId).emit("broadcast-unfollow");
+                    io->emitToRoom(socketId, Packet("broadcast-unfollow", "", client->fd));
                 }
             }
         });
-
     });
 }
 
