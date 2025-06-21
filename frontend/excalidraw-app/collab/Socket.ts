@@ -26,15 +26,20 @@ export default class Socket {
 
   constructor() {
     // collab_event를 listen하여 이벤트 분기
-    listen('collab_event', (event: { payload: [string, string] }) => {
-      const [eventName, base64data] = event.payload;
-      const decodedData = this.fromBase64(base64data);
-      if (eventName === 'init-room' && decodedData) {
-        this.id = decodedData; // 서버가 내려주는 내 고유 ID 저장
-      }
-      const cbs = this.listeners.get(eventName);
-      if (cbs) {
-        cbs.forEach(cb => cb(decodedData, eventName));
+    listen('collab_event', (event: { payload: string }) => {
+      try {
+        const jsonPayload = JSON.parse(event.payload);
+        const { event: eventName, data: base64data } = jsonPayload;
+        const decodedData = this.fromBase64(base64data);
+        if (eventName === 'init-room' && decodedData) {
+          this.id = decodedData; // 서버가 내려주는 내 고유 ID 저장
+        }
+        const cbs = this.listeners.get(eventName);
+        if (cbs) {
+          cbs.forEach(cb => cb(decodedData, eventName));
+        }
+      } catch (error) {
+        console.error('JSON 파싱 실패:', error);
       }
     }).then(unlisten => {
       this.unlisten = unlisten;

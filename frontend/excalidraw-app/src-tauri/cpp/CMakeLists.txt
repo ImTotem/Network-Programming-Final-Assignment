@@ -23,14 +23,8 @@ set(COLLAB_CXX_SOURCES
         src/CollabClient.cpp
         src/log/Log.h
         src/log/Log.cpp
-        src/payload/Payload.h
-        src/protocol/Protocol.h
-        src/protocol/Protocol.cpp
         src/utils/base64.h
         src/utils/base64.cpp
-        src/utils/sha1.h
-        src/utils/sha1.cpp
-        src/utils/Endian.h
         src/CollabClientCAPI.h
         src/CollabClientCAPI.cpp
 )
@@ -43,12 +37,5 @@ add_library(
         ${COLLAB_CXX_SOURCES}
 )
 
-add_executable(
-        collab_client
-        src/main.cpp
-)
-
 target_include_directories(collab_lib PRIVATE src)
-target_include_directories(collab_client PRIVATE src)
 target_link_libraries(collab_lib PRIVATE nlohmann_json::nlohmann_json)
-target_link_libraries(collab_client collab_lib)

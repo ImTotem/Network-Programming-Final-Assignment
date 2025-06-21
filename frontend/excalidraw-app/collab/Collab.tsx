@@ -372,7 +372,8 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     if (!keepRemoteState) {
       LocalData.fileStorage.reset();
       this.destroySocketClient();
-    } else if (window.confirm(t("alerts.collabStopOverridePrompt"))) {
+    // } else if (window.confirm(t("alerts.collabStopOverridePrompt"))) {
+    } else {
       // hack to ensure that we prefer we disregard any new browser state
       // that could have been saved in other tabs while we were collaborating
       resetBrowserStateVersions();

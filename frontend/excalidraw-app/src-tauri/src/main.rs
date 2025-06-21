@@ -13,12 +13,11 @@ fn collab_connect(host: String, port: u16) -> bool {
 }
 
 #[tauri::command]
-fn collab_emit(event: String, args: Vec<String>) -> bool {
+fn collab_emit(event: String, data: String) -> bool {
     let client = collab_client::get_client();
-    let c_event = std::ffi::CString::new(event).unwrap();
-    let c_args: Vec<std::ffi::CString> = args.iter().map(|s| std::ffi::CString::new(s.as_str()).unwrap()).collect();
-    let c_ptrs: Vec<*const i8> = c_args.iter().map(|s| s.as_ptr()).collect();
-    unsafe { ffi::collabclient_emit(client, c_event.as_ptr(), c_ptrs.as_ptr(), c_ptrs.len() as i32) }
+    let json_payload = format!("{{\"event\":\"{}\",\"data\":\"{}\"}}", event, data);
+    let c_json = std::ffi::CString::new(json_payload).unwrap();
+    unsafe { ffi::collabclient_emit(client, c_json.as_ptr()) }
 }
 
 #[tauri::command]

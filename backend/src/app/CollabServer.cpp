@@ -12,6 +12,8 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 
+#include "utils/base64.h"
+
 // --- 유틸 함수 구현 ---
 static std::vector<std::string> split(const std::string& s, char delimiter) {
     std::vector<std::string> tokens;
@@ -78,7 +80,7 @@ void CollabServer::setupEventHandlers() {
         io->emitToRoom(client->id, Packet("init-room", "", client->fd));
 
         client->on("join-room", [this, client](const Packet& packet) {
-            const std::string& roomID = packet.data;
+            const std::string& roomID = base64::from_base64(packet.data);
             Log::debug("{} has joined {}", client->id, roomID);
             client->join(roomID);
             const auto sockets = io->socketsIn(roomID);

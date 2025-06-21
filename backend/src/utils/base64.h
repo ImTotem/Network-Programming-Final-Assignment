@@ -9,6 +9,7 @@
 
 namespace base64 {
     std::string to_base64(const std::string &in);
+    std::string from_base64(const std::string &in);
 }
 
 #endif //BASE64_H
