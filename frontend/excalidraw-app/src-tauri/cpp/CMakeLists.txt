@@ -8,7 +8,6 @@ if(APPLE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
 endif()
 
-
 set(COLLAB_CXX_SOURCES
         src/CollabClient.h
         src/CollabClient.cpp

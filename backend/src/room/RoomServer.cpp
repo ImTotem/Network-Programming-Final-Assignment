@@ -84,7 +84,7 @@ void RoomServer::emitToRoom(const std::string& roomID, const Packet& packet) {
     if (it != rooms.end()) {
         for (const sockfd fd : it->second) {
             if (const auto client = getClient(fd)) {
-                client->server->send(packet);
+                client->server->send(Packet(packet.event, packet.data, client->fd));
             }
         }
     }
@@ -95,7 +95,7 @@ void RoomServer::broadcastToRoom(const std::string& roomID, const Packet& packet
         for (const sockfd fd : rooms[roomID]) {
             if (fd != packet.fd) {
                 if (const auto client = getClient(fd)) {
-                    client->server->send(packet);
+                    client->server->send(Packet(packet.event, packet.data, client->fd));
                 }
             }
         }
