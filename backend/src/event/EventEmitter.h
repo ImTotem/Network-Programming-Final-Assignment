@@ -35,7 +35,7 @@ public:
      * @param event 발생시킬 이벤트의 이름.
      * @param arg 리스너에게 전달될 인자.
      */
-    void emit(const std::string& event, const Packet& arg) {
+    virtual void emit(const std::string& event, const Packet& arg) {
         if (const auto it = listeners.find(event); it != listeners.end()) {
             for (const auto& listener : it->second) {
                 listener(arg);

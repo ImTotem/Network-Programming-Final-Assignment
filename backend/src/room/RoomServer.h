@@ -29,8 +29,8 @@ public:
     [[nodiscard]] std::vector<sockfd> getAllFd() const override;
 
 private:
-    std::map<sockfd, std::shared_ptr<Client>> clients_;
-    std::map<std::string, std::set<sockfd>> rooms_;
+    std::map<sockfd, std::shared_ptr<Client>> clients;
+    std::map<std::string, std::set<sockfd>> rooms;
 };
 
 #endif //ROOMSERVER_H

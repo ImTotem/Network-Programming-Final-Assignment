@@ -7,12 +7,11 @@
 #include <thread>
 #include <atomic>
 #include <vector>
-#include <any>
 #include <mutex>
 
-// C 스타일 콜백 타입 정의
+// C 스타일 콜백 타입 정의 - JSON 문자열 하나만 받음
 extern "C" {
-    typedef void (*collab_event_callback_t)(const char* event, const char** args, int argc, void* user_data);
+    typedef void (*collab_event_callback_t)(const char* json_payload, void* user_data);
 }
 
 class CollabClient {
@@ -24,22 +23,19 @@ public:
     void disconnect();
 
     // 서버로 이벤트 전송
-    // eventName은 항상 "payload"로 고정, args는 반드시 {"event":..., "data":...} JSON string 하나만 전달
-    bool emit(const std::string& eventName, const std::vector<std::any>& args);
+    bool emit(const std::string& json_payload);
 
     // C++ 코드 내에서 직접 콜백 등록 (기존)
-    // eventName은 항상 "payload"로 고정, 콜백에서 args[0]만 사용해야 함
-    void on(const std::string& eventName, std::function<void(const std::vector<std::any>&)> callback);
+    void on(const std::string& eventName, std::function<void(const std::string&)> callback);
 
     // Rust FFI에서 콜백 등록 (추가)
-    // 콜백에서 args[0]만 사용해야 함
     void set_event_callback(collab_event_callback_t cb, void* user_data);
 
 private:
     int sockfd;
     std::thread recvThread;
     std::atomic<bool> running;
-    std::map<std::string, std::function<void(const std::vector<std::any>&)>> handlers;
+    std::map<std::string, std::function<void(const std::string&)>> handlers;
     std::mutex handlerMutex;
 
     // Rust FFI 콜백

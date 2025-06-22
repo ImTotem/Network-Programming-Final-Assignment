@@ -9,6 +9,7 @@
 
 #include "log/Log.h"
 #include "socket/IOMultiplexer/IOMultiplexingException.h"
+#include "utils/endian.h"
 
 [[noreturn]] void Server::start() {
     socket->open();
@@ -48,6 +49,9 @@ void Server::handleNewConnection() {
         return;
     }
     io->control(Operation::ADD, client_fd);
+
+    client_buffers[client_fd];
+
     emit("_connection", Packet("connection", "", client_fd));
     Log::info("New connection established, fd: {}", client_fd);
 }
@@ -60,6 +64,7 @@ void Server::handleStdinInput() {
 }
 
 void Server::close(const sockfd fd) {
+    client_buffers.erase(fd);
     io->control(Operation::DEL, fd);
     socket->close(fd, {Method::READ, Method::WRITE});
     Log::info("Connection closed for fd: {}", fd);
@@ -67,18 +72,54 @@ void Server::close(const sockfd fd) {
 }
 
 void Server::send(const Packet& packet) {
+    // [헤더(=JSON길이)][JSON]
     const std::string raw = serializePacket(packet.event, packet.data);
-    socket->send(packet.fd, raw.data(), raw.size());
+
+    // 1. 헤더 생성 (JSON 데이터의 길이)
+    uint32_t header = htonl(raw.size());
+
+    std::vector<char> full_packet;
+    full_packet.insert(full_packet.end(), reinterpret_cast<char *>(&header), reinterpret_cast<char *>(&header) + sizeof(header));
+    full_packet.insert(full_packet.end(), raw.begin(), raw.end());
+
+    if (socket->send(packet.fd, full_packet.data(), full_packet.size()) < 0) {
+        Log::warn("Failed to send packet to fd: {}", packet.fd);
+    }
+    Log::debug("Send packet: {} {} {}", packet.event, packet.data, packet.fd);
 }
 
 void Server::recv(const sockfd fd) {
-    if (const ssize_t length = socket->recv(fd, recv_buffer.data(), recv_buffer.size()); length > 0) {
-        const std::string payload(recv_buffer.begin(), recv_buffer.begin() + length);
-        auto [event, data] = parsePacket(payload);
-        const Packet packet(event, data, fd);
-        Log::debug("{} {} {}", packet.event, packet.data, packet.fd);
-        emit("_message", packet);
-    } else {
+    const auto it = client_buffers.find(fd);
+
+    PacketBuffer& packet_buffer = it->second;
+
+    const size_t remaining = packet_buffer.remainingSize();
+
+    // 2. 이번에 실제로 읽을 크기를 결정합니다. (최대 4096까지만)
+    const size_t bytes_to_read = std::min(static_cast<size_t>(4096), (remaining));
+
+    // 읽어야 할 데이터가 없으면 아무것도 하지 않습니다.
+    if (bytes_to_read == 0) {
+        return;
+    }
+
+    // 3. 정확히 필요한 크기만큼만 임시 버퍼(벡터)를 생성합니다.
+    std::vector<char> temp_buffer(bytes_to_read);
+
+    // 4. recv()를 딱 한 번 호출하고, 결과를 안전하게 ssize_t에 저장합니다.
+    const ssize_t bytes_actually_read = socket->recv(fd, temp_buffer.data(), bytes_to_read);
+
+    // 5. 에러 또는 연결 종료를 처리합니다.
+    if (bytes_actually_read <= 0) {
         close(fd);
+        return;
+    }
+
+    // 6. 읽은 만큼만 PacketBuffer에 데이터를 추가합니다.
+    packet_buffer.append(temp_buffer.data(), static_cast<size_t>(bytes_actually_read));
+
+    if (packet_buffer.isReady()) {
+        emit("_message", packet_buffer.toPacket(fd));
+        packet_buffer.reset();
     }
 }

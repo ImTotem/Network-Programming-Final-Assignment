@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 use once_cell::sync::{Lazy, OnceCell};
-use std::os::raw::{c_char, c_int, c_void};
+use std::os::raw::{c_char, c_void};
 use std::ffi::{CStr};
 use crate::ffi;
 use tauri::{AppHandle, Emitter};
@@ -33,17 +33,12 @@ pub fn get_client() -> *mut c_void {
 }
 
 // Rust 콜백 → Tauri 이벤트 emit
-pub extern "C" fn rust_collab_event_callback(event: *const c_char, args: *const *const c_char, argc: c_int, _user_data: *mut c_void) {
-    let event_name = unsafe { CStr::from_ptr(event).to_string_lossy().to_string() };
-    let mut arg_vec = Vec::new();
-    for i in 0..argc {
-        let arg_ptr = unsafe { *args.add(i as usize) };
-        let arg = unsafe { CStr::from_ptr(arg_ptr).to_string_lossy().to_string() };
-        arg_vec.push(arg);
-    }
-    // Tauri 이벤트 emit (전역 app 핸들러 사용)
+pub extern "C" fn rust_collab_event_callback(json_payload: *const c_char, _user_data: *mut c_void) {
+    let json_str = unsafe { CStr::from_ptr(json_payload).to_string_lossy().to_string() };
+    
+    // JSON 문자열을 그대로 Tauri 이벤트로 전달 (파싱하지 않음)
     tauri::async_runtime::spawn(async move {
-        get_app_handle().emit("collab_event", (event_name, arg_vec)).ok();
+        get_app_handle().emit("collab_event", json_str).ok();
     });
 }
 

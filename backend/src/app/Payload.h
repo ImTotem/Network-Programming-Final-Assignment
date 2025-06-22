@@ -6,7 +6,8 @@
 #define PAYLOAD_H
 
 #include <string>
-#include <nlohmann/json.hpp>
+#include "utils/json.hpp"
+using json = nlohmann::json;
 
 enum class FollowAction { FOLLOW, UNFOLLOW };
 
@@ -20,25 +21,25 @@ struct OnUserFollowedPayload {
 };
 
 // 1. User 구조체를 위한 변환 규칙
-inline void to_json(nlohmann::json& j, const OnUserFollowedPayload::User& u) {
-    j = nlohmann::json{
+inline void to_json(json& j, const OnUserFollowedPayload::User& u) {
+    j = json{
             {"socketId", u.socketId},
             {"username", u.username}
     };
 }
-inline void from_json(const nlohmann::json& j, OnUserFollowedPayload::User& u) {
+inline void from_json(const json& j, OnUserFollowedPayload::User& u) {
     j.at("socketId").get_to(u.socketId);
     j.at("username").get_to(u.username);
 }
 
 // 2. 메인 OnUserFollowedPayload 구조체를 위한 변환 규칙
-inline void to_json(nlohmann::json& j, const OnUserFollowedPayload& p) {
-    j = nlohmann::json{
+inline void to_json(json& j, const OnUserFollowedPayload& p) {
+    j = json{
             {"userToFollow", p.userToFollow},
             {"action", p.action == FollowAction::FOLLOW ? "FOLLOW" : "UNFOLLOW"} // Enum을 문자열로 변환
     };
 }
-inline void from_json(const nlohmann::json& j, OnUserFollowedPayload& p) {
+inline void from_json(const json& j, OnUserFollowedPayload& p) {
     j.at("userToFollow").get_to(p.userToFollow);
     std::string action_str;
     j.at("action").get_to(action_str);

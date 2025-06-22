@@ -5,42 +5,15 @@
 #include "CollabServer.h"
 #include <string>
 #include "env/dotenv.h"
-#include "log/Log.h"
+// #include "log/Log.h"
 #include "room/RoomServer.h"
 #include "room/client/Client.h"
-#include <sstream>
 #include <vector>
-#include <nlohmann/json.hpp>
 
-// --- 유틸 함수 구현 ---
-static std::vector<std::string> split(const std::string& s, char delimiter) {
-    std::vector<std::string> tokens;
-    std::stringstream ss(s);
-    std::string item;
-    while (std::getline(ss, item, delimiter)) {
-        tokens.push_back(item);
-    }
-    return tokens;
-}
+#include "utils/base64.h"
+#include "utils/json.hpp"
 
-static std::string join(const std::vector<std::string>& v, const std::string& delim) {
-    std::ostringstream oss;
-    for (size_t i = 0; i < v.size(); ++i) {
-        if (i != 0) oss << delim;
-        oss << v[i];
-    }
-    return oss.str();
-}
-
-static std::string extractSocketId(const std::string& json) {
-    // 매우 단순한 string 파싱: "socketId":"..." 패턴에서 ...만 추출
-    auto pos = json.find("\"socketId\":\"");
-    if (pos == std::string::npos) return "";
-    pos += 13; // "socketId":" 길이
-    auto end = json.find('"', pos);
-    if (end == std::string::npos) return "";
-    return json.substr(pos, end - pos);
-}
+using json = nlohmann::json;
 
 CollabServer::CollabServer() {
     // 1. 환경변수 로드
@@ -75,57 +48,54 @@ void CollabServer::setupEventHandlers() {
         auto client = io->getClient(packet.fd);
         if (!client) return;
         Log::info("Connection established! Client ID: {}", client->id);
-        io->emitToRoom(client->id, Packet("init-room", "", client->fd));
 
-        client->on("join-room", [this, client](const Packet& packet) {
-            const std::string& roomID = packet.data;
+        io->emitToRoom(client->id, Packet("init-room", base64::encode(json::to_cbor(client->id)), client->fd));
+
+        client->on("join-room", [this, client](const Packet& pack) {
+            const std::string& roomID = json::from_cbor(base64::decode(pack.data)).get<std::string>();
             Log::debug("{} has joined {}", client->id, roomID);
             client->join(roomID);
             const auto sockets = io->socketsIn(roomID);
+            Log::debug("{}", sockets.size());
             if (sockets.size() <= 1) {
-                io->emitToRoom(client->id, Packet("first-in-room", "", client->fd));
+                io->emitToRoom(client->id, Packet("first-in-room", base64::encode(json::to_cbor("")), client->fd));
             } else {
                 Log::debug("{} emitting new-user to room {}", client->id, roomID);
-                io->broadcastToRoom(roomID, Packet("new-user", client->id, client->fd));
+                io->broadcastToRoom(roomID, Packet("new-user", base64::encode(json::to_cbor(client->id)), client->fd));
             }
             std::vector<std::string> socket_ids;
             socket_ids.reserve(sockets.size());
             for (const auto& s : sockets) socket_ids.push_back(s->id);
-            io->emitToRoom(roomID, Packet("room-user-change", join(socket_ids, ","), client->fd));
+            io->emitToRoom(roomID, Packet("room-user-change", base64::encode(json::to_cbor(socket_ids)), client->fd));
         });
 
         client->on("server-broadcast", [this, client](const Packet& packet) {
-            auto parts = split(packet.data, '|');
-            if (parts.size() != 3) return;
-            const auto& roomID = parts[0];
-            const auto& encryptedData = parts[1];
-            const auto& iv = parts[2];
+            const std::string roomID = json::from_cbor(base64::decode(packet.data))["roomId"].get<std::string>();
             Log::debug("{} sends update to {}", client->id, roomID);
-            io->broadcastToRoom(roomID, Packet("client-broadcast", encryptedData + "|" + iv, client->fd));
+            io->broadcastToRoom(roomID, Packet("client-broadcast", packet.data, client->fd));
         });
 
         client->on("server-volatile-broadcast", [this, client](const Packet& packet) {
-            auto parts = split(packet.data, '|');
-            if (parts.size() != 3) return;
-            const auto& roomID = parts[0];
-            const auto& encryptedData = parts[1];
-            const auto& iv = parts[2];
+            const std::string roomID = json::from_cbor(base64::decode(packet.data))["roomId"].get<std::string>();
             Log::debug("{} sends volatile update to {}", client->id, roomID);
-            io->broadcastToRoom(roomID, Packet("client-broadcast", encryptedData + "|" + iv, client->fd));
+            io->broadcastToRoom(roomID, Packet("client-broadcast", packet.data, client->fd));
         });
 
         client->on("user-follow", [this, client](const Packet& packet) {
-            const std::string& json_string = packet.data;
-            std::string roomID = "follow@" + extractSocketId(json_string);
-            if (json_string.find("FOLLOW") != std::string::npos) {
+            const auto data = json::from_cbor(base64::decode(packet.data));
+            const std::string roomID = "follow@" + data["userToFollow"]["socketId"].get<std::string>();
+            if (data["action"].get<std::string>() == "FOLLOW") {
                 client->join(roomID);
-            } else {
+            } else if (data["action"].get<std::string>() == "UNFOLLOW") {
                 client->leave(roomID);
             }
             const auto sockets = io->socketsIn(roomID);
             std::vector<std::string> followedBy_ids;
             for (const auto& s : sockets) followedBy_ids.push_back(s->id);
-            io->emitToRoom(extractSocketId(json_string), Packet("user-follow-room-change", join(followedBy_ids, ","), client->fd));
+            io->emitToRoom(
+                data["userToFollow"]["socketId"].get<std::string>(),
+                Packet("user-follow-room-change", base64::encode(json::to_cbor(followedBy_ids)), client->fd)
+            );
         });
 
         client->on("disconnecting", [this, client](const Packet&) {
@@ -139,12 +109,12 @@ void CollabServer::setupEventHandlers() {
                         if (c->id != client->id) socket_ids.push_back(c->id);
                     }
                     if (!socket_ids.empty()) {
-                        io->broadcastToRoom(roomID, Packet("room-user-change", join(socket_ids, ","), client->fd));
+                        io->broadcastToRoom(roomID, Packet("room-user-change", base64::encode(json::to_cbor(socket_ids)), client->fd));
                     }
                 }
                 if (isFollowRoom && otherClients.size() == 1 && otherClients[0]->id == client->id) {
                     const auto socketId = roomID.substr(std::string("follow@").length());
-                    io->emitToRoom(socketId, Packet("broadcast-unfollow", "", client->fd));
+                    io->emitToRoom(socketId, Packet("broadcast-unfollow", base64::encode(json::to_cbor("")), client->fd));
                 }
             }
         });

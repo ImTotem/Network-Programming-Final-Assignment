@@ -1,5 +1,4 @@
 #include "CollabClient.h"
-#include "protocol/Protocol.h"
 
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -54,27 +53,18 @@ void CollabClient::disconnect() {
     }
 }
 
-bool CollabClient::emit(const std::string& eventName, const std::vector<std::any>& args) {
+bool CollabClient::emit(const std::string& json_payload) {
     if (sockfd < 0) return false;
-    // 항상 eventName은 "payload"로, args는 JSON string 하나만
-    std::string fixedEvent = "payload";
-    std::vector<std::any> fixedArgs;
-    if (!args.empty() && args[0].type() == typeid(std::string)) {
-        fixedArgs.push_back(std::any_cast<std::string>(args[0]));
-    } else {
-        // 잘못된 사용: 빈 payload
-        fixedArgs.push_back(std::string("{\"event\":\"unknown\",\"data\":\"\"}"));
-    }
-    std::vector<char> payload = Protocol::serialize(fixedEvent, fixedArgs);
-
-    // [길이(4바이트)][payload]
-    uint32_t len = htonl(payload.size());
-    if (::send(sockfd, &len, sizeof(len), 0) != sizeof(len)) return false;
-    if (!payload.empty() && ::send(sockfd, payload.data(), payload.size(), 0) != (ssize_t)payload.size()) return false;
+    
+    // [헤더][json_payload] 형태로 전송
+    // 헤더는 json_payload의 길이 (4바이트)
+    uint32_t len = htonl(json_payload.size());
+    if (send(sockfd, &len, sizeof(len), 0) != sizeof(len)) return false;
+    if (send(sockfd, json_payload.data(), json_payload.size(), 0) != (ssize_t)json_payload.size()) return false;
     return true;
 }
 
-void CollabClient::on(const std::string& eventName, std::function<void(const std::vector<std::any>&)> callback) {
+void CollabClient::on(const std::string& eventName, std::function<void(const std::string&)> callback) {
     std::lock_guard<std::mutex> lock(handlerMutex);
     handlers[eventName] = callback;
 }
@@ -91,7 +81,6 @@ void CollabClient::recvLoop() {
         ssize_t n = recv(sockfd, &len_net, sizeof(len_net), MSG_WAITALL);
         if (n <= 0) break;
         uint32_t len = ntohl(len_net);
-        if (len == 0 || len > 10 * 1024 * 1024) break; // 10MB 이상은 비정상
 
         std::vector<char> buffer(len);
         size_t received = 0;
@@ -110,39 +99,20 @@ void CollabClient::recvLoop() {
 }
 
 void CollabClient::handleMessage(const std::vector<char>& data) {
-    std::string eventName;
-    std::vector<std::any> args;
-    Protocol::deserialize(data, eventName, args);
-
-    // 항상 eventName은 "payload", args[0]은 JSON string임을 가정
-    if (event_callback && !args.empty() && args[0].type() == typeid(std::string)) {
-        std::string jsonStr = std::any_cast<std::string>(args[0]);
-        // nlohmann::json j = nlohmann::json::parse(jsonStr);
-        // std::string event = j["event"];
-        // std::string data = j["data"];
-        // std::string decoded = base64::from_base64(data);
-        // ...
-    }
-    // 기존 C++ 핸들러도 동일하게 동작
+    // JSON 문자열을 그대로 콜백에 전달 (파싱하지 않음)
+    std::string jsonStr(data.begin(), data.end());
+    
+    // 기존 C++ 핸들러 호출 (raw JSON 문자열 전달)
     {
         std::lock_guard<std::mutex> lock(handlerMutex);
-        auto it = handlers.find(eventName);
+        auto it = handlers.find("payload");
         if (it != handlers.end()) {
-            it->second(args);
+            it->second(jsonStr);
         }
     }
-    // Rust FFI 콜백도 동일하게 전달
+    
+    // Rust FFI 콜백 호출 (raw JSON 문자열 전달)
     if (event_callback) {
-        std::vector<std::string> str_args;
-        for (const auto& arg : args) {
-            if (arg.type() == typeid(std::string)) {
-                str_args.push_back(std::any_cast<std::string>(arg));
-            } else {
-                str_args.push_back("");
-            }
-        }
-        std::vector<const char*> c_args;
-        for (const auto& s : str_args) c_args.push_back(s.c_str());
-        event_callback(eventName.c_str(), c_args.data(), c_args.size(), event_callback_user_data);
+        event_callback(jsonStr.c_str(), event_callback_user_data);
     }
 }

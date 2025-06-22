@@ -4,14 +4,6 @@ project(collab_server C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-include(FetchContent)
-
-FetchContent_Declare(
-        json
-        URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
-)
-FetchContent_MakeAvailable(json)
-
 set(COLLAB_C_SOURCES
         src/env/dotenv.c
 )
@@ -35,9 +27,11 @@ set(COLLAB_CXX_SOURCES
         src/room/client/Client.cpp
         src/room/client/Client.h
         src/utils/base64.h
-        src/utils/base64.cpp
+        src/utils/json.hpp
         src/app/Payload.h
         src/server/Packet.h
+        src/utils/endian.h
+        src/server/Packet.cpp
 )
 
 if(WIN32)
@@ -74,7 +68,6 @@ add_executable(
 
 target_include_directories(collab_lib PRIVATE src)
 target_include_directories(collab_server PRIVATE src)
-target_link_libraries(collab_lib PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(collab_server collab_lib)
 
 if(WIN32)

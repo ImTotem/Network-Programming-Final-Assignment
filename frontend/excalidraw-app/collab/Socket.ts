@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-
+import { encode, decode } from 'cbor-x';
 export type EventCallback = (...args: any[]) => void;
 
 export default class Socket {
@@ -8,33 +8,52 @@ export default class Socket {
   private listeners: Map<string, Set<EventCallback>> = new Map();
   private unlisten: UnlistenFn | null = null;
 
-  // base64 인코딩/디코딩 유틸
-  private toBase64(str: string): string {
-    if (typeof window !== 'undefined' && window.btoa) {
-      return window.btoa(unescape(encodeURIComponent(str)));
-    } else {
-      return Buffer.from(str, 'utf-8').toString('base64');
+  private serialize(data: any): string {
+    const cbor = encode(data);
+
+    let binaryString = '';
+    const len = cbor.byteLength;
+    for (let i = 0; i < len; i++) {
+      binaryString += String.fromCharCode(cbor[i]);
     }
+    return window.btoa(binaryString);
   }
-  private fromBase64(str: string): string {
-    if (typeof window !== 'undefined' && window.atob) {
-      return decodeURIComponent(escape(window.atob(str)));
-    } else {
-      return Buffer.from(str, 'base64').toString('utf-8');
+
+  private deserialize<T>(data: string): T {
+    const binaryString = window.atob(data);
+
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
     }
+
+    return decode(bytes) as T;
   }
 
   constructor() {
     // collab_event를 listen하여 이벤트 분기
-    listen('collab_event', (event: { payload: [string, string] }) => {
-      const [eventName, base64data] = event.payload;
-      const decodedData = this.fromBase64(base64data);
-      if (eventName === 'init-room' && decodedData) {
-        this.id = decodedData; // 서버가 내려주는 내 고유 ID 저장
-      }
-      const cbs = this.listeners.get(eventName);
-      if (cbs) {
-        cbs.forEach(cb => cb(decodedData, eventName));
+    listen('collab_event', (event: { payload: string }) => {
+      try {
+        const { event: eventName, data: base64data } = JSON.parse(event.payload);
+        if (eventName === 'init-room' && base64data) {
+          this.id = this.deserialize<string>(base64data); // 서버가 내려주는 내 고유 ID 저장
+        }
+        const cbs = this.listeners.get(eventName);
+        if (cbs) {
+          cbs.forEach((cb) => {
+            console.log(`[${eventName}] Received: ${this.deserialize<any>(base64data)}`);
+            console.log(`[${eventName}] ${cb.toString()}`);
+            const deserializedData = this.deserialize<any>(base64data);
+            if (Array.isArray(deserializedData)) {
+              cb(...deserializedData);
+            } else {
+              cb(deserializedData);
+            }
+          });
+        }
+      } catch (error) {
+        console.error('CBOR 파싱 실패:', error);
       }
     }).then(unlisten => {
       this.unlisten = unlisten;
@@ -74,8 +93,7 @@ export default class Socket {
   }
 
   emit(event: string, data: any) {
-    // data를 base64 인코딩 후 event, data로 분리해서 전송
-    return invoke('collab_emit', { event, data: this.toBase64(data) });
+    return invoke('collab_emit', { event, data: this.serialize(data) });
   }
 
   close() {

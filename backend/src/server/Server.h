@@ -11,13 +11,19 @@
 #include "socket/Socket.h"
 #include "socket/IOMultiplexer/IOMultiplexer.h"
 
+#include "utils/json.hpp"
+
+#include "log/Log.h"
+using json = nlohmann::json;
 
 class Server : public EventEmitter {
     const std::unique_ptr<Socket> socket;
     const std::unique_ptr<IOMultiplexer> io = std::make_unique<IOMultiplexer>();
-    std::vector<char> recv_buffer;
+    // 클라이언트별로 독립적인 버퍼를 관리
+    std::map<sockfd, PacketBuffer> client_buffers;
+
 public:
-    explicit Server(unsigned short port): socket(std::make_unique<Socket>(port)), recv_buffer(4096) {}
+    explicit Server(unsigned short port): socket(std::make_unique<Socket>(port)) {}
     ~Server() override = default;
 
     [[noreturn]] void start();
@@ -33,21 +39,20 @@ public:
 
     // --- 패킷 파서/빌더 ---
     static std::string serializePacket(const std::string& event, const std::string& base64data) {
-        // 매우 단순한 JSON 직렬화 (실제 환경에서는 JSON 라이브러리 권장)
-        return R"({"event":")" + event + R"(","data":")" + base64data + "\"}";
+        json packet;
+        packet["event"] = event;
+        packet["data"] = base64data;
+        return packet.dump();
     }
     static std::pair<std::string, std::string> parsePacket(const std::string& raw) {
-        // 매우 단순한 파싱: {"event":"...","data":"..."}
-        auto epos = raw.find(R"("event":")");
-        auto dpos = raw.find(R"("data":")");
-        if (epos == std::string::npos || dpos == std::string::npos) return {"", ""};
-        epos += 9;
-        const auto eend = raw.find('"', epos);
-        const auto dend = raw.find('"', dpos + 8);
-        if (eend == std::string::npos || dend == std::string::npos) return {"", ""};
-        std::string event = raw.substr(epos, eend - epos);
-        std::string data = raw.substr(dpos + 8, dend - (dpos + 8));
-        return {event, data};
+        json packet = json::parse(raw);
+        if (!packet.contains("event")) {
+            packet["event"] = "";
+        }
+        if (!packet.contains("data")) {
+            packet["data"] = "";
+        }
+        return {packet["event"].get<std::string>(), packet["data"].get<std::string>()};
     }
 
 private:
