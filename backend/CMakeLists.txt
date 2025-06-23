@@ -54,7 +54,7 @@ else()
 endif()
 
 add_library(
-        collab_lib SHARED
+        collab_lib STATIC
         ${COLLAB_C_SOURCES}
         ${COLLAB_CXX_SOURCES}
 )
