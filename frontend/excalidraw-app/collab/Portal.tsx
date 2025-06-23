@@ -40,7 +40,10 @@ class Portal {
     this.roomKey = key;
 
     // Initialize socket listeners
-    socket.connect("10.211.55.9", 3002);
+    socket.connect(
+      import.meta.env.VITE_APP_WS_SERVER_URL || "127.0.0.1",
+      parseInt(import.meta.env.VITE_APP_WS_SERVER_PORT, 10) || 3002
+    );
     this.socket.on("init-room", () => {
       if (this.socket) {
         this.socket.emit("join-room", this.roomId);

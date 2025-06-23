@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  # 빌드 전용 서비스
+  builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # 여기에 빌드 시 주입할 환경 변수를 지정합니다.
+      args:
+        VITE_APP_WS_SERVER_URL: "10.211.55.9" # <-- 여기에 실제 서버 IP를 입력하세요
+        VITE_APP_WS_SERVER_PORT: "3002"       # <-- 여기에 실제 서버 Port를 입력하세요
+    # 최종 이미지에 "project-builder"라는 태그를 붙입니다.
+    image: project-builder

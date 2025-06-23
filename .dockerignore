@@ -1,0 +1,26 @@
+# Git 관련 파일 제외
+.git
+.gitignore
+
+# Docker 관련 파일 자체는 제외
+Dockerfile
+docker-compose.yml
+build.sh
+dist/
+
+# 백엔드 빌드 결과물 제외
+**/build
+**/build-debug
+
+# 프론트엔드 빌드 결과물 및 의존성 제외
+**/target
+**/node_modules
+
+# IDE 및 운영체제 관련 파일 제외
+.idea/
+.vscode/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
