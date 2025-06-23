@@ -1,3 +1,9 @@
+# 빌드 자동화
+```bash
+./build.sh
+```
+- docker 필수
+
 # 시스템 종속성 설치
 ## Linux
 ```bash
